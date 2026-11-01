@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -12,11 +13,37 @@ from urllib.parse import urlparse
 from flask import Flask, jsonify, render_template, request, send_from_directory
 import yt_dlp
 
-APP_DIR = Path(__file__).resolve().parent
-DOWNLOAD_ROOT = Path.home() / "Downloads" / "Cutroom"
-DOWNLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+APP_DIR = Path(os.environ.get("CUTROOM_HOME", Path(__file__).resolve().parent)).resolve()
+SETTINGS_PATH = APP_DIR / "settings.json"
+DEFAULT_DOWNLOAD_ROOT = Path.home() / "Downloads"
 
-app = Flask(__name__)
+
+def load_settings() -> dict:
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def current_download_root() -> Path:
+    raw = load_settings().get("download_dir")
+    try:
+        candidate = Path(raw).expanduser() if raw else DEFAULT_DOWNLOAD_ROOT
+        if not candidate.is_absolute():
+            return DEFAULT_DOWNLOAD_ROOT
+        return candidate.resolve()
+    except (OSError, TypeError, ValueError):
+        return DEFAULT_DOWNLOAD_ROOT
+
+
+def save_download_root(path: Path) -> None:
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps({"download_dir": str(path.resolve())}, indent=2), encoding="utf-8")
+
+
+app = Flask(__name__, template_folder=str(Path(__file__).resolve().parent / "templates"))
+LAST_CLIENT_HEARTBEAT = 0.0
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
 ALLOWED_HOSTS = {
@@ -64,7 +91,7 @@ def ffmpeg_executable() -> str | None:
     return shutil.which("ffmpeg")
 
 
-def convert_video_to_compatible_mp4(source: Path, job_id: str) -> Path:
+def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ultrafast") -> Path:
     """Encode H.264/AAC and report FFmpeg's real progress to the web UI."""
     executable = ffmpeg_executable()
     if not executable:
@@ -87,7 +114,7 @@ def convert_video_to_compatible_mp4(source: Path, job_id: str) -> Path:
 
     command = [
         executable, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
-        "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast",
+        "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", preset,
         "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
         "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(target),
     ]
@@ -154,10 +181,27 @@ def set_job(job_id: str, **updates) -> None:
             JOBS[job_id].update(updates)
 
 
-def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playlist: bool, selected_indices: list[int] | None = None) -> None:
-    job_dir = DOWNLOAD_ROOT / job_id
+def unique_destination(dest_dir: Path, name: str) -> Path:
+    candidate = dest_dir / name
+    if not candidate.exists():
+        return candidate
+    stem, suffix = candidate.stem, candidate.suffix
+    for number in range(2, 10000):
+        candidate = dest_dir / f"{stem} ({number}){suffix}"
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Too many files named {name!r} already exist in the selected folder.")
+
+
+def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playlist: bool,
+                 selected_indices: list[int] | None = None, destination: str | None = None,
+                 conversion_speed: str = "ultrafast") -> None:
+    dest_dir = Path(destination).expanduser().resolve() if destination else current_download_root()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    staging_root = APP_DIR / "work"
+    job_dir = staging_root / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    outtmpl = str(job_dir / "%(playlist_index)03d - %(title).180B.%(ext)s") if playlist else str(job_dir / "%(title).180B.%(ext)s")
+    outtmpl = str(job_dir / ("%(playlist_index)03d - %(title).180B.%(ext)s" if playlist else "%(title).180B.%(ext)s"))
 
     def progress_hook(data):
         status = data.get("status")
@@ -193,7 +237,6 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
     }
 
     if selected_indices:
-        # yt-dlp uses one-based playlist positions. Restrict the job to checked entries.
         opts["playlist_items"] = ",".join(str(i) for i in selected_indices)
 
     if kind == "audio":
@@ -203,7 +246,6 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
     else:
         opts["format"] = "bestvideo*+bestaudio/best"
         if fmt == "mp4":
-            # Download/merge to a reliable intermediate container, then encode H.264/AAC below.
             opts["merge_output_format"] = "mkv"
         else:
             opts["merge_output_format"] = fmt
@@ -225,25 +267,30 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
             converted = []
             for source in media_candidates:
                 set_job(job_id, state="converting", percent=99, detail=f"Making a compatible MP4 · {source.name}")
-                converted.append(convert_video_to_compatible_mp4(source, job_id))
-        files = [p for p in job_dir.rglob("*") if p.is_file() and p.suffix.lower() not in {".part", ".ytdl", ".temp"}]
-        if not files:
+                converted.append(convert_video_to_compatible_mp4(source, job_id, conversion_speed))
+        staged_files = [p for p in job_dir.rglob("*") if p.is_file() and p.suffix.lower() not in {".part", ".ytdl", ".temp"}]
+        if not staged_files:
             raise RuntimeError("No files were created. The video may be unavailable, or FFmpeg may be missing.")
         file_data = []
-        for path in sorted(files, key=lambda p: p.name.lower()):
+        for path in sorted(staged_files, key=lambda p: p.name.lower()):
             try:
-                rel = path.relative_to(job_dir).as_posix()
-                file_data.append({"name": path.name, "path": rel, "size": path.stat().st_size})
-            except OSError:
-                continue
-        set_job(job_id, state="done", percent=100, detail=f"Finished · {len(file_data)} file(s) saved", files=file_data, output_dir=str(job_dir))
+                final_path = unique_destination(dest_dir, path.name)
+                shutil.move(str(path), str(final_path))
+                file_data.append({"name": final_path.name, "path": final_path.name, "size": final_path.stat().st_size})
+            except OSError as exc:
+                raise RuntimeError(f"Couldn't move the finished file to {dest_dir}: {exc}") from exc
+        set_job(job_id, state="done", percent=100,
+                detail=f"Finished · {len(file_data)} file(s) saved to {dest_dir}",
+                files=file_data, output_dir=str(dest_dir), download_dir=str(dest_dir))
     except Exception as exc:
         message = str(exc).strip() or "Download failed."
         if "ffmpeg" in message.lower() or "ffprobe" in message.lower():
-            message = "FFmpeg is missing. Run install.bat again or install FFmpeg, then retry."
+            message = "FFmpeg is missing. Run Cutroom again to repair setup, then retry."
         elif "sign in" in message.lower() or "bot" in message.lower():
             message = "YouTube blocked this request. Try a different public video you are allowed to save."
         set_job(job_id, state="error", percent=0, detail=message[:500])
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 @app.get("/")
@@ -251,9 +298,73 @@ def index():
     return render_template("index.html")
 
 
+@app.post("/api/heartbeat")
+def client_heartbeat():
+    """Heartbeat from the open browser tab; the desktop launcher exits when it stops."""
+    global LAST_CLIENT_HEARTBEAT
+    import time
+    LAST_CLIENT_HEARTBEAT = time.monotonic()
+    return jsonify(ok=True)
+
+
 @app.get("/api/status")
 def status():
-    return jsonify(ok=True, ffmpeg=bool(ffmpeg_location() or shutil.which("ffmpeg")), download_folder=str(DOWNLOAD_ROOT))
+    return jsonify(ok=True, ffmpeg=bool(ffmpeg_location() or shutil.which("ffmpeg")), download_folder=str(current_download_root()))
+
+
+@app.post("/api/choose-folder")
+def choose_folder():
+    """Ask the desktop launcher to show a native Windows folder picker."""
+    import sys
+    import subprocess
+    picker_result = APP_DIR / f"folder-picker-{uuid.uuid4().hex}.txt"
+    current = str(current_download_root())
+    try:
+        env = os.environ.copy()
+        env["CUTROOM_PICKER_INITIAL_DIR"] = current
+        env["CUTROOM_PICKER_RESULT_FILE"] = str(picker_result)
+        if getattr(sys, "frozen", False):
+            command = [sys.executable, "--pick-folder"]
+        else:
+            launcher_script = Path(__file__).resolve().parent / "launcher.py"
+            command = [sys.executable, str(launcher_script), "--pick-folder"]
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180, env=env,
+                                creationflags=flags, check=False)
+        if result.returncode != 0:
+            return jsonify(error=(result.stderr or "Folder picker could not start.")[:300]), 500
+        selected = picker_result.read_text(encoding="utf-8").strip() if picker_result.exists() else ""
+        if not selected:
+            return jsonify(cancelled=True, download_folder=current)
+        folder = Path(selected).expanduser().resolve()
+        if not folder.is_dir():
+            return jsonify(error="That folder does not exist."), 400
+        save_download_root(folder)
+        return jsonify(ok=True, download_folder=str(folder))
+    except subprocess.TimeoutExpired:
+        return jsonify(error="Folder picker timed out."), 500
+    except Exception as exc:
+        return jsonify(error=f"Couldn't choose a folder: {exc}"[:300]), 500
+    finally:
+        picker_result.unlink(missing_ok=True)
+
+
+@app.post("/api/settings/download-folder")
+def set_download_folder():
+    payload = request.get_json(silent=True) or {}
+    raw = (payload.get("path") or "").strip().strip('"')
+    if not raw:
+        return jsonify(error="Enter a folder path or use Browse."), 400
+    try:
+        folder = Path(raw).expanduser()
+        if not folder.is_absolute():
+            return jsonify(error="Use a full folder path, such as C:\\Users\\You\\Downloads."), 400
+        folder.mkdir(parents=True, exist_ok=True)
+        folder = folder.resolve()
+        save_download_root(folder)
+        return jsonify(ok=True, download_folder=str(folder))
+    except OSError as exc:
+        return jsonify(error=f"Couldn't use that folder: {exc}"[:300]), 400
 
 
 
@@ -314,6 +425,16 @@ def start_download():
         selected_indices = sorted({int(i) for i in raw_indices if str(i).isdigit() and 1 <= int(i) <= 500}) if isinstance(raw_indices, list) else None
         if raw_indices is not None and not selected_indices:
             raise ValueError("Tick at least one video to download.")
+        destination_raw = (payload.get("destination") or str(current_download_root())).strip().strip('"')
+        destination_path = Path(destination_raw).expanduser()
+        if not destination_path.is_absolute():
+            raise ValueError("Choose a full save-location path.")
+        destination_path.mkdir(parents=True, exist_ok=True)
+        destination_path = destination_path.resolve()
+        save_download_root(destination_path)
+        conversion_speed = payload.get("conversion_speed", "ultrafast")
+        if conversion_speed not in {"ultrafast", "veryfast", "fast"}:
+            conversion_speed = "ultrafast"
         if kind not in {"audio", "video"}:
             raise ValueError("Choose audio or video.")
         allowed = AUDIO_FORMATS if kind == "audio" else VIDEO_FORMATS
@@ -327,7 +448,9 @@ def start_download():
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
         JOBS[job_id] = {"id": job_id, "state": "queued", "percent": 0, "detail": "Waiting to start…", "files": []}
-    thread = threading.Thread(target=run_download, args=(job_id, url, kind, fmt, quality, playlist, selected_indices), daemon=True)
+    thread = threading.Thread(target=run_download,
+        args=(job_id, url, kind, fmt, quality, playlist, selected_indices, str(destination_path), conversion_speed),
+        daemon=True)
     thread.start()
     return jsonify(id=job_id), 202
 
@@ -356,5 +479,4 @@ def get_file(job_id: str):
 
 
 if __name__ == "__main__":
-    # Local-only: do not expose this development server to the public internet.
     app.run(host="127.0.0.1", port=8765, debug=False, threaded=True)
