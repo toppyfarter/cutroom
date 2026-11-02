@@ -38,6 +38,23 @@ def run_folder_picker() -> int:
         root.destroy()
 
 
+def run_video_picker() -> int:
+    """Native picker for a source video in the cutter panel."""
+    from tkinter import filedialog
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askopenfilename(parent=root, title="Choose a video to cut",
+            filetypes=[("Video files", "*.mp4 *.mkv *.webm *.mov *.avi *.m4v"), ("All files", "*.*")])
+        result_file = os.environ.get("CUTROOM_PICKER_RESULT_FILE")
+        if result_file:
+            Path(result_file).write_text(selected or "", encoding="utf-8")
+        return 0
+    finally:
+        root.destroy()
+
+
 def app_home() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
     return base / "Cutroom"
@@ -265,4 +282,6 @@ def main():
 if __name__ == "__main__":
     if "--pick-folder" in sys.argv:
         raise SystemExit(run_folder_picker())
+    if "--pick-video-file" in sys.argv:
+        raise SystemExit(run_video_picker())
     raise SystemExit(main())

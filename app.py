@@ -91,41 +91,65 @@ def ffmpeg_executable() -> str | None:
     return shutil.which("ffmpeg")
 
 
+def probe_codecs(source: Path, ffmpeg: str) -> tuple[str, str]:
+    """Return video/audio codec names when ffprobe is available."""
+    ffprobe = Path(ffmpeg).with_name("ffprobe.exe") if str(ffmpeg).lower().endswith(".exe") else None
+    if not ffprobe or not ffprobe.exists():
+        return "", ""
+    try:
+        result = subprocess.run(
+            [str(ffprobe), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
+            capture_output=True, text=True, timeout=20,
+        )
+        video = (result.stdout or "").strip().splitlines()[0] if result.stdout.strip() else ""
+        audio_result = subprocess.run(
+            [str(ffprobe), "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
+            capture_output=True, text=True, timeout=20,
+        )
+        audio = (audio_result.stdout or "").strip().splitlines()[0] if audio_result.stdout.strip() else ""
+        return video, audio
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return "", ""
+
+
 def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ultrafast") -> Path:
-    """Encode H.264/AAC and report FFmpeg's real progress to the web UI."""
+    """Prefer a fast stream-copy/remux. Re-encode only when the source codecs need it."""
     executable = ffmpeg_executable()
     if not executable:
-        raise RuntimeError("FFmpeg is missing. Run install.bat again, then retry the video download.")
-
+        raise RuntimeError("FFmpeg is missing. Restart Cutroom to repair setup, then retry.")
     target = source.with_name(source.stem + ".cutroom-converted.mp4")
+    video_codec, audio_codec = probe_codecs(source, executable)
+    can_copy = video_codec in {"h264", "avc1"} and audio_codec in {"aac", "mp3", "alac"}
     duration_seconds = 0.0
     ffprobe = Path(executable).with_name("ffprobe.exe") if str(executable).lower().endswith(".exe") else None
     if ffprobe and ffprobe.exists():
         try:
-            probe = subprocess.run(
-                [str(ffprobe), "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
-                capture_output=True, text=True, timeout=20,
-            )
-            if probe.returncode == 0:
-                duration_seconds = float((probe.stdout or "").strip() or 0)
+            probe = subprocess.run([str(ffprobe), "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", str(source)], capture_output=True, text=True, timeout=20)
+            duration_seconds = float((probe.stdout or "").strip() or 0)
         except (OSError, ValueError, subprocess.SubprocessError):
             duration_seconds = 0.0
 
-    command = [
-        executable, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
-        "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", preset,
-        "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-        "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(target),
-    ]
+    if can_copy:
+        command = [executable, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+                   "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-movflags", "+faststart",
+                   "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(target)]
+        set_job(job_id, state="converting", percent=86, detail=f"Fast MP4 remux · {source.name}")
+    else:
+        command = [executable, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+                   "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", preset,
+                   "-crf", "23", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
+                   "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(target)]
+        set_job(job_id, state="converting", percent=85, detail=f"Compatibility conversion · {source.name}")
+
     import tempfile
     with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as error_log:
+        process = None
         try:
-            process = subprocess.Popen(
-                command, stdout=subprocess.PIPE, stderr=error_log, text=True,
-                encoding="utf-8", errors="replace", bufsize=1,
-            )
-            last_percent = -1
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=error_log, text=True,
+                                       encoding="utf-8", errors="replace", bufsize=1)
             assert process.stdout is not None
             for line in process.stdout:
                 line = line.strip()
@@ -135,27 +159,18 @@ def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ul
                         hh, mm, ss = raw_time.split(":")
                         elapsed = int(hh) * 3600 + int(mm) * 60 + float(ss)
                         fraction = max(0.0, min(1.0, elapsed / duration_seconds))
-                        conversion_pct = round(fraction * 100)
-                        if conversion_pct != last_percent:
-                            overall_pct = 85 + fraction * 14
-                            set_job(job_id, state="converting", percent=round(overall_pct, 1),
-                                    detail=f"Making a compatible MP4 · {source.name} · {conversion_pct}%")
-                            last_percent = conversion_pct
+                        overall_pct = (86 if can_copy else 85) + fraction * (13 if can_copy else 14)
+                        set_job(job_id, state="converting", percent=round(overall_pct, 1),
+                                detail=f"{'Fast MP4 remux' if can_copy else 'Converting to compatible MP4'} · {source.name} · {round(fraction*100)}%")
                     except (ValueError, TypeError):
                         pass
-                elif line == "progress=continue" and duration_seconds <= 0:
-                    set_job(job_id, state="converting", percent=90,
-                            detail=f"Making a compatible MP4 · {source.name} · encoding…")
             return_code = process.wait(timeout=60 * 60)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-            target.unlink(missing_ok=True)
-            raise RuntimeError("MP4 conversion took too long and was stopped. Try a shorter video or a faster PC.")
+            process.kill(); process.wait(); target.unlink(missing_ok=True)
+            raise RuntimeError("MP4 processing took too long and was stopped. Try a shorter video.")
         except Exception:
-            if 'process' in locals() and process.poll() is None:
-                process.kill()
-                process.wait()
+            if process and process.poll() is None:
+                process.kill(); process.wait()
             target.unlink(missing_ok=True)
             raise
         error_log.seek(0)
@@ -165,7 +180,6 @@ def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ul
         target.unlink(missing_ok=True)
         detail = error_text.splitlines()
         raise RuntimeError("FFmpeg couldn't create a playable MP4. " + (detail[-1][:240] if detail else "Check that FFmpeg is installed."))
-
     final_path = source.with_suffix(".mp4")
     if final_path.exists() and final_path.resolve() != source.resolve():
         final_path = source.with_name(source.stem + "-compatible.mp4")
@@ -173,6 +187,94 @@ def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ul
     if source.exists() and source.resolve() != final_path.resolve():
         source.unlink(missing_ok=True)
     return final_path
+
+
+def parse_time_seconds(value: str) -> float:
+    """Parse seconds or HH:MM:SS / MM:SS input."""
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("Enter both a start time and an end time.")
+    try:
+        if ":" not in raw:
+            result = float(raw)
+        else:
+            parts = [float(part) for part in raw.split(":")]
+            if len(parts) == 2:
+                result = parts[0] * 60 + parts[1]
+            elif len(parts) == 3:
+                result = parts[0] * 3600 + parts[1] * 60 + parts[2]
+            else:
+                raise ValueError
+        if result < 0 or result > 7 * 24 * 3600:
+            raise ValueError
+        return result
+    except (ValueError, TypeError):
+        raise ValueError("Use seconds, MM:SS, or HH:MM:SS for the cut times.")
+
+
+def run_cut(job_id: str, source_raw: str, start_seconds: float, end_seconds: float,
+            destination: str, mode: str) -> None:
+    source = Path(source_raw).expanduser().resolve()
+    dest_dir = Path(destination).expanduser().resolve()
+    temp_path = None
+    try:
+        if not source.is_file() or source.suffix.lower() not in {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"}:
+            raise RuntimeError("Choose an existing video file (MP4, MKV, WebM, MOV, AVI, or M4V).")
+        if end_seconds <= start_seconds:
+            raise RuntimeError("End time must be later than start time.")
+        executable = ffmpeg_executable()
+        if not executable:
+            raise RuntimeError("FFmpeg is missing. Restart Cutroom to repair setup.")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        duration = end_seconds - start_seconds
+        temp_path = dest_dir / f"{source.stem}.cutroom-cutting.mp4"
+        if mode == "accurate":
+            command = [executable, "-y", "-hide_banner", "-loglevel", "error", "-ss", str(start_seconds),
+                       "-i", str(source), "-t", str(duration), "-map", "0:v:0", "-map", "0:a?",
+                       "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-c:a", "aac", "-b:a", "160k",
+                       "-movflags", "+faststart", "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(temp_path)]
+        else:
+            # Fast, no-re-encode cutting. Keyframe boundaries may be approximate.
+            command = [executable, "-y", "-hide_banner", "-loglevel", "error", "-ss", str(start_seconds),
+                       "-i", str(source), "-t", str(duration), "-map", "0:v:0", "-map", "0:a?",
+                       "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart",
+                       "-progress", "pipe:1", "-stats_period", "1", "-nostats", str(temp_path)]
+        set_job(job_id, state="converting", percent=1, detail="Cutting video…")
+        import tempfile
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as error_log:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=error_log, text=True,
+                                    encoding="utf-8", errors="replace", bufsize=1)
+            assert proc.stdout is not None
+            try:
+                for line in proc.stdout:
+                    line = line.strip()
+                    if line.startswith("out_time="):
+                        raw_time = line.partition("=")[2]
+                        try:
+                            hh, mm, ss = raw_time.split(":")
+                            elapsed = int(hh) * 3600 + int(mm) * 60 + float(ss)
+                            pct = max(1.0, min(99.0, elapsed / duration * 100))
+                            set_job(job_id, state="converting", percent=round(pct, 1), detail=f"Cutting video… {round(pct)}%")
+                        except (ValueError, TypeError):
+                            pass
+                return_code = proc.wait(timeout=60 * 60)
+            except subprocess.TimeoutExpired:
+                proc.kill(); proc.wait()
+                raise RuntimeError("Video cutting took too long and was stopped.")
+            error_log.seek(0)
+            error_text = error_log.read().strip()
+        if return_code != 0 or not temp_path.exists() or temp_path.stat().st_size < 1024:
+            raise RuntimeError("Video cut failed: " + ((error_text or "FFmpeg produced no output.").strip().splitlines()[-1][:240]))
+        final_path = unique_destination(dest_dir, f"{source.stem}-cut.mp4")
+        temp_path.replace(final_path)
+        set_job(job_id, state="done", percent=100, detail=f"Cut complete · saved to {dest_dir}",
+                files=[{"name": final_path.name, "path": final_path.name, "size": final_path.stat().st_size}],
+                output_dir=str(dest_dir), download_dir=str(dest_dir))
+    except Exception as exc:
+        set_job(job_id, state="error", percent=0, detail=str(exc)[:500], files=[])
+    finally:
+        if temp_path:
+            temp_path.unlink(missing_ok=True)
 
 
 def set_job(job_id: str, **updates) -> None:
@@ -237,6 +339,7 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
     }
 
     if selected_indices:
+        # yt-dlp uses one-based playlist positions. Restrict the job to checked entries.
         opts["playlist_items"] = ",".join(str(i) for i in selected_indices)
 
     if kind == "audio":
@@ -244,10 +347,12 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
         codec_map = {"mp3": "mp3", "m4a": "m4a", "wav": "wav", "flac": "flac", "opus": "opus"}
         opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": codec_map[fmt], "preferredquality": quality if fmt == "mp3" else "0"}]
     else:
-        opts["format"] = "bestvideo*+bestaudio/best"
         if fmt == "mp4":
-            opts["merge_output_format"] = "mkv"
+            # Prefer MP4/H.264 video plus M4A/AAC audio so FFmpeg can merge without re-encoding.
+            opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo*+bestaudio/best"
+            opts["merge_output_format"] = "mp4"
         else:
+            opts["format"] = "bestvideo*+bestaudio/best"
             opts["merge_output_format"] = fmt
             if fmt in {"mkv", "mov", "avi", "webm"}:
                 opts["recodevideo"] = fmt
@@ -368,6 +473,63 @@ def set_download_folder():
 
 
 
+@app.post("/api/choose-video")
+def choose_video():
+    """Open a native file picker for the built-in video cutter."""
+    import sys
+    picker_result = APP_DIR / f"video-picker-{uuid.uuid4().hex}.txt"
+    try:
+        env = os.environ.copy()
+        env["CUTROOM_PICKER_RESULT_FILE"] = str(picker_result)
+        if getattr(sys, "frozen", False):
+            command = [sys.executable, "--pick-video-file"]
+        else:
+            command = [sys.executable, str(Path(__file__).resolve().parent / "launcher.py"), "--pick-video-file"]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180, env=env,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
+        if result.returncode != 0:
+            return jsonify(error=(result.stderr or "Video picker could not start.")[:300]), 500
+        selected = picker_result.read_text(encoding="utf-8").strip() if picker_result.exists() else ""
+        return jsonify(cancelled=not bool(selected), path=selected)
+    except subprocess.TimeoutExpired:
+        return jsonify(error="Video picker timed out."), 500
+    except Exception as exc:
+        return jsonify(error=f"Couldn't choose a video: {exc}"[:300]), 500
+    finally:
+        picker_result.unlink(missing_ok=True)
+
+
+@app.post("/api/cut")
+def start_cut():
+    payload = request.get_json(silent=True) or {}
+    source = (payload.get("source") or "").strip().strip('"')
+    destination = (payload.get("destination") or str(current_download_root())).strip().strip('"')
+    try:
+        if not source:
+            raise ValueError("Choose a video file first.")
+        source_path = Path(source).expanduser()
+        if not source_path.is_absolute() or not source_path.is_file():
+            raise ValueError("Choose an existing video file using Browse.")
+        start_seconds = parse_time_seconds(payload.get("start", "0"))
+        end_seconds = parse_time_seconds(payload.get("end", ""))
+        dest_path = Path(destination).expanduser()
+        if not dest_path.is_absolute():
+            raise ValueError("Choose a full output folder path.")
+        dest_path.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_path.resolve()
+        mode = payload.get("mode", "fast")
+        if mode not in {"fast", "accurate"}:
+            mode = "fast"
+    except (ValueError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+    job_id = uuid.uuid4().hex[:12]
+    with JOBS_LOCK:
+        JOBS[job_id] = {"id": job_id, "state": "queued", "percent": 0, "detail": "Waiting to cut…", "files": []}
+    thread = threading.Thread(target=run_cut, args=(job_id, str(source_path.resolve()), start_seconds, end_seconds, str(dest_path), mode), daemon=True)
+    thread.start()
+    return jsonify(id=job_id), 202
+
+
 @app.post("/api/inspect")
 def inspect_url():
     payload = request.get_json(silent=True) or {}
@@ -479,4 +641,5 @@ def get_file(job_id: str):
 
 
 if __name__ == "__main__":
+    # Local-only: do not expose this development server to the public internet.
     app.run(host="127.0.0.1", port=8765, debug=False, threaded=True)
