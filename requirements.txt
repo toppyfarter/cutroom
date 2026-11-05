@@ -3,3 +3,5 @@ yt-dlp
 pystray>=0.19.5
 Pillow>=10.0
 PyInstaller>=6.0
+
+certifi>=2024.2.2
