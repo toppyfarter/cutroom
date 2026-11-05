@@ -90,20 +90,29 @@ def ffmpeg_executable() -> str | None:
     return shutil.which("ffmpeg")
 
 
+def ffprobe_executable(ffmpeg: str) -> str | None:
+    """Find ffprobe beside bundled FFmpeg or on PATH for normal installs."""
+    if str(ffmpeg).lower().endswith((".exe", ".bat", ".cmd")):
+        candidate = Path(ffmpeg).with_name("ffprobe.exe")
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("ffprobe")
+
+
 def probe_codecs(source: Path, ffmpeg: str) -> tuple[str, str]:
     """Return video/audio codec names when ffprobe is available."""
-    ffprobe = Path(ffmpeg).with_name("ffprobe.exe") if str(ffmpeg).lower().endswith(".exe") else None
-    if not ffprobe or not ffprobe.exists():
+    ffprobe = ffprobe_executable(ffmpeg)
+    if not ffprobe:
         return "", ""
     try:
         result = subprocess.run(
-            [str(ffprobe), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+            [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
              "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
             capture_output=True, text=True, timeout=20,
         )
         video = (result.stdout or "").strip().splitlines()[0] if result.stdout.strip() else ""
         audio_result = subprocess.run(
-            [str(ffprobe), "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name",
+            [ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name",
              "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
             capture_output=True, text=True, timeout=20,
         )
@@ -122,10 +131,10 @@ def convert_video_to_compatible_mp4(source: Path, job_id: str, preset: str = "ul
     video_codec, audio_codec = probe_codecs(source, executable)
     can_copy = video_codec in {"h264", "avc1"} and audio_codec in {"aac", "mp3", "alac"}
     duration_seconds = 0.0
-    ffprobe = Path(executable).with_name("ffprobe.exe") if str(executable).lower().endswith(".exe") else None
-    if ffprobe and ffprobe.exists():
+    ffprobe = ffprobe_executable(executable)
+    if ffprobe:
         try:
-            probe = subprocess.run([str(ffprobe), "-v", "error", "-show_entries", "format=duration",
+            probe = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1", str(source)], capture_output=True, text=True, timeout=20)
             duration_seconds = float((probe.stdout or "").strip() or 0)
         except (OSError, ValueError, subprocess.SubprocessError):
@@ -295,7 +304,7 @@ def unique_destination(dest_dir: Path, name: str) -> Path:
 
 def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playlist: bool,
                  selected_indices: list[int] | None = None, destination: str | None = None,
-                 conversion_speed: str = "ultrafast") -> None:
+                 conversion_speed: str = "ultrafast", resolution: str = "best") -> None:
     dest_dir = Path(destination).expanduser().resolve() if destination else current_download_root()
     dest_dir.mkdir(parents=True, exist_ok=True)
     staging_root = APP_DIR / "work"
@@ -325,6 +334,7 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
         "continuedl": True,
         "retries": 3,
         "fragment_retries": 3,
+        "concurrent_fragment_downloads": 8,
         "socket_timeout": 30,
         "windowsfilenames": True,
         "trim_file_name": 180,
@@ -346,7 +356,13 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
         opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": codec_map[fmt], "preferredquality": quality if fmt == "mp3" else "0"}]
     else:
         if fmt == "mp4":
-            opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo*+bestaudio/best"
+            height_filter = "" if resolution == "best" else f"[height<={int(resolution)}]"
+            # Prefer AVC/H.264 + AAC so the MP4 can be stream-copied instead of re-encoded.
+            opts["format"] = (
+                f"bestvideo{height_filter}[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                f"bestvideo{height_filter}[ext=mp4]+bestaudio[ext=m4a]/"
+                f"best{height_filter}[ext=mp4]/bestvideo{height_filter}+bestaudio/best{height_filter}/best"
+            )
             opts["merge_output_format"] = "mp4"
         else:
             opts["format"] = "bestvideo*+bestaudio/best"
@@ -594,6 +610,9 @@ def start_download():
         conversion_speed = payload.get("conversion_speed", "ultrafast")
         if conversion_speed not in {"ultrafast", "veryfast", "fast"}:
             conversion_speed = "ultrafast"
+        resolution = str(payload.get("resolution", "best"))
+        if resolution not in {"best", "2160", "1440", "1080", "720", "480", "360", "240"}:
+            resolution = "best"
         if kind not in {"audio", "video"}:
             raise ValueError("Choose audio or video.")
         allowed = AUDIO_FORMATS if kind == "audio" else VIDEO_FORMATS
@@ -608,7 +627,7 @@ def start_download():
     with JOBS_LOCK:
         JOBS[job_id] = {"id": job_id, "state": "queued", "percent": 0, "detail": "Waiting to start…", "files": []}
     thread = threading.Thread(target=run_download,
-        args=(job_id, url, kind, fmt, quality, playlist, selected_indices, str(destination_path), conversion_speed),
+        args=(job_id, url, kind, fmt, quality, playlist, selected_indices, str(destination_path), conversion_speed, resolution),
         daemon=True)
     thread.start()
     return jsonify(id=job_id), 202
