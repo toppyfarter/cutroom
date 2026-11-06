@@ -50,6 +50,11 @@ ALLOWED_HOSTS = {
     "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
     "youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com",
 }
+SOUNDCLOUD_HOSTS = {"soundcloud.com", "www.soundcloud.com", "m.soundcloud.com", "on.soundcloud.com"}
+TIKTOK_HOSTS = {"tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"}
+INSTAGRAM_HOSTS = {"instagram.com", "www.instagram.com", "m.instagram.com", "instagr.am", "www.instagr.am"}
+X_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com", "t.co"}
+SUPPORTED_HOSTS = ALLOWED_HOSTS | SOUNDCLOUD_HOSTS | TIKTOK_HOSTS | INSTAGRAM_HOSTS | X_HOSTS
 AUDIO_FORMATS = {"mp3", "m4a", "wav", "flac", "opus"}
 VIDEO_FORMATS = {"mp4", "mkv", "webm", "mov", "avi"}
 JOBS: dict[str, dict] = {}
@@ -59,14 +64,27 @@ JOBS_LOCK = threading.Lock()
 def validate_url(value: str) -> str:
     value = (value or "").strip()
     if not value or len(value) > 2048:
-        raise ValueError("Paste a YouTube video, playlist, or YouTube Music link.")
+        raise ValueError("Paste a supported YouTube, SoundCloud, TikTok, Instagram, or X media link.")
     parsed = urlparse(value)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme not in {"http", "https"} or host not in ALLOWED_HOSTS:
-        raise ValueError("Use a standard youtube.com, music.youtube.com, or youtu.be link.")
+    if parsed.scheme not in {"http", "https"} or host not in SUPPORTED_HOSTS:
+        raise ValueError("Use a supported YouTube, SoundCloud, TikTok, Instagram, or X link.")
     if parsed.username or parsed.password or parsed.path in {"", "/"}:
-        raise ValueError("Paste a link to a video or playlist, not the YouTube homepage.")
+        raise ValueError("Paste a link to a track, video, set, or playlist, not a homepage.")
     return value
+
+
+def platform_for_url(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if host in SOUNDCLOUD_HOSTS:
+        return "SoundCloud"
+    if host in TIKTOK_HOSTS:
+        return "TikTok"
+    if host in INSTAGRAM_HOSTS:
+        return "Instagram"
+    if host in X_HOSTS:
+        return "X"
+    return "YouTube"
 
 
 def safe_name(value: str) -> str:
@@ -350,6 +368,11 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
         # yt-dlp uses one-based playlist positions. Restrict the job to checked entries.
         opts["playlist_items"] = ",".join(str(i) for i in selected_indices)
 
+    platform = platform_for_url(url)
+    is_soundcloud = platform == "SoundCloud"
+    if is_soundcloud and kind != "audio":
+        raise ValueError("SoundCloud provides audio tracks. Choose Audio only to download this link.")
+
     if kind == "audio":
         opts["format"] = "bestaudio/best"
         codec_map = {"mp3": "mp3", "m4a": "m4a", "wav": "wav", "flac": "flac", "opus": "opus"}
@@ -370,7 +393,7 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
             if fmt in {"mkv", "mov", "avi", "webm"}:
                 opts["recodevideo"] = fmt
 
-    set_job(job_id, state="starting", percent=0, detail="Connecting to YouTube…")
+    set_job(job_id, state="starting", percent=0, detail=f"Connecting to {platform}…")
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
@@ -405,7 +428,7 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
         if "ffmpeg" in message.lower() or "ffprobe" in message.lower():
             message = "FFmpeg is missing. Run Cutroom again to repair setup, then retry."
         elif "sign in" in message.lower() or "bot" in message.lower():
-            message = "YouTube blocked this request. Try a different public video you are allowed to save."
+            message = "The platform blocked this request. Try public media you are allowed to save."
         set_job(job_id, state="error", percent=0, detail=message[:500])
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -560,7 +583,7 @@ def inspect_url():
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
-            raise RuntimeError("YouTube didn't return any video details for that link.")
+            raise RuntimeError(f"{platform_for_url(url)} did not return any media details for that link.")
         entries = info.get("entries")
         if entries is None:
             entries = [info]
@@ -578,12 +601,12 @@ def inspect_url():
                 "thumbnail": item.get("thumbnail") or "",
             })
         if not results:
-            raise RuntimeError("No videos were found. Check that the link is public and available.")
-        return jsonify(title=info.get("title") or "YouTube results", entries=results, truncated=len(results) >= 500)
+            raise RuntimeError("No tracks or videos were found. Check that the link is public and available.")
+        return jsonify(title=info.get("title") or f"{platform_for_url(url)} results", platform=platform_for_url(url), entries=results, truncated=len(results) >= 500)
     except Exception as exc:
         message = str(exc).strip() or "Couldn't read videos from that link."
         if "sign in" in message.lower() or "bot" in message.lower():
-            message = "YouTube blocked this request. Try a public video or playlist you are allowed to access."
+            message = "The platform blocked this request. Try public media you are allowed to access."
         return jsonify(error=message[:500]), 400
 
 
@@ -615,6 +638,8 @@ def start_download():
             resolution = "best"
         if kind not in {"audio", "video"}:
             raise ValueError("Choose audio or video.")
+        if platform_for_url(url) == "SoundCloud" and kind != "audio":
+            raise ValueError("SoundCloud provides audio tracks. Choose Audio only to download this link.")
         allowed = AUDIO_FORMATS if kind == "audio" else VIDEO_FORMATS
         if fmt not in allowed:
             raise ValueError("Choose a supported output format.")
