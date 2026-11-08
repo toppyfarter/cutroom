@@ -62,6 +62,15 @@
   .timeline input[type=range]::-moz-range-thumb{height:36px}
 }
 
+
+/* Video scrubber and frame preview */
+.scrub-row{margin-top:18px;padding:14px 16px;background:#f5f3ec;border:1px solid var(--line);border-radius:4px}
+.scrub-heading{display:flex;justify-content:space-between;gap:12px;font-size:.86rem;margin-bottom:8px}
+.scrub-heading span{font:13px ui-monospace,monospace;color:var(--muted)}
+#cutPlayhead{display:block;width:100%;accent-color:var(--accent);cursor:pointer}
+.scrub-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.scrub-actions .cutter-hint{margin:0}
+
 </style></head>
 <body><div class="wrap">
 <header class="nav"><div class="brand"><span class="logo">cr</span>cutroom <span style="font:11px ui-monospace,monospace;color:#77786f">/ youtube utility</span></div><span class="pill">Local app · v2.1</span></header>
@@ -92,6 +101,17 @@
         <input type="range" id="cutEnd" min="0" max="1" step="0.01" value="1" aria-label="Cut end">
       </div>
       <div class="cutter-meta"><span>Drag either handle to trim</span><span id="cutDuration">0 sec selected</span></div>
+
+      <div class="scrub-row">
+        <div class="scrub-heading"><strong>Preview position</strong><span id="cutPlayheadLabel">00:00</span></div>
+        <input type="range" id="cutPlayhead" min="0" max="1" step="0.1" value="0" aria-label="Seek through video">
+        <div class="scrub-actions">
+          <button type="button" class="smallbtn" id="skipBackBtn" disabled>−5 sec</button>
+          <button type="button" class="smallbtn" id="skipForwardBtn" disabled>+5 sec</button>
+          <span class="cutter-hint">Drag to jump anywhere in the video. Arrow keys also seek.</span>
+        </div>
+      </div>
+
       <div class="cutter-buttons"><button type="button" class="smallbtn" id="previewCutBtn" disabled>Preview selection</button><button type="button" id="processCutBtn" disabled>Export cut</button></div>
       <div class="cutter-options">
         <div><label for="cutMode">Cut mode</label><select id="cutMode"><option value="accurate" selected>Accurate · re-encode</option><option value="fast">Fast · stream copy</option></select></div>
@@ -122,6 +142,36 @@ $('downloadBtn').addEventListener('click',async()=>{const url=$('url').value.tri
 $('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('inspectBtn').click()});$('anotherBtn').addEventListener('click',()=>{clearTimeout(pollTimer);activeJob=null;foundEntries=[];$('resultsPanel').hidden=true;$('files').innerHTML='';$('actions').hidden=true;setStatus('Ready for another link.',0);$('url').focus()});
 
 // Built-in visual video cutter
+
+const cutPlayhead=$("cutPlayhead");
+function updatePlayhead(){
+  if(!cutDurationSeconds)return;
+  const time=Math.max(0,Math.min(cutDurationSeconds,Number(cutVideo.currentTime)||0));
+  cutPlayhead.value=time;
+  $("cutPlayheadLabel").textContent=cutTime(time);
+}
+function seekToPreviewTime(value){
+  if(!cutDurationSeconds||!Number.isFinite(Number(value)))return;
+  const time=Math.max(0,Math.min(cutDurationSeconds,Number(value)));
+  cutVideo.currentTime=time;
+  cutPreviewing=false;
+  $("previewCutBtn").textContent="Preview selection";
+  updatePlayhead();
+}
+cutPlayhead.addEventListener("input",()=>seekToPreviewTime(cutPlayhead.value));
+$("skipBackBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)-5));
+$("skipForwardBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)+5));
+cutVideo.addEventListener("timeupdate",updatePlayhead);
+cutVideo.addEventListener("loadedmetadata",updatePlayhead);
+cutStart.addEventListener("change",()=>seekToPreviewTime(cutStart.value));
+cutEnd.addEventListener("change",()=>seekToPreviewTime(cutEnd.value));
+cutVideo.addEventListener("keydown",event=>{
+  if(event.key==="ArrowLeft"||event.key==="ArrowRight"){
+    event.preventDefault();
+    seekToPreviewTime((Number(cutVideo.currentTime)||0)+(event.key==="ArrowRight"?5:-5));
+  }
+});
+
 let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
 const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
 function cutTime(value){const n=Math.max(0,Math.floor(Number(value)||0));const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0"):String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");}
@@ -156,6 +206,8 @@ $("chooseCutVideo").addEventListener("click",async()=>{
     $("videoInfo").textContent=(info.width||"?")+" × "+(info.height||"?")+" · "+cutTime(cutDurationSeconds)+" total";
     cutStart.min=0;cutStart.max=cutDurationSeconds;cutStart.step=Math.max(cutDurationSeconds/10000,0.01);cutStart.value=0;
     cutEnd.min=0;cutEnd.max=cutDurationSeconds;cutEnd.step=Math.max(cutDurationSeconds/10000,0.01);cutEnd.value=cutDurationSeconds;
+    cutPlayhead.min=0;cutPlayhead.max=cutDurationSeconds;cutPlayhead.step=Math.max(cutDurationSeconds/1000,0.1);cutPlayhead.value=0;
+    $("skipBackBtn").disabled=false;$("skipForwardBtn").disabled=false;
     $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;updateCutTimeline();
     setStatus("Video ready. Drag the timeline handles and preview your selection.",0);
   }catch(e){setStatus(e.message,0)}
