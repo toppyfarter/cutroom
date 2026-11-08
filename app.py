@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 import yt_dlp
 
 APP_DIR = Path(os.environ.get("CUTROOM_HOME", Path(__file__).resolve().parent)).resolve()
@@ -54,6 +54,8 @@ AUDIO_FORMATS = {"mp3", "m4a", "wav", "flac", "opus"}
 VIDEO_FORMATS = {"mp4", "mkv", "webm", "mov", "avi"}
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
+VIDEO_PREVIEWS: dict[str, Path] = {}
+VIDEO_PREVIEWS_LOCK = threading.Lock()
 
 
 def validate_url(value: str) -> str:
@@ -510,6 +512,59 @@ def choose_video():
         return jsonify(error=f"Couldn't choose a video: {exc}"[:300]), 500
     finally:
         picker_result.unlink(missing_ok=True)
+
+
+
+
+@app.post("/api/video-preview")
+def create_video_preview():
+    """Register a local video for browser preview and return its duration."""
+    payload = request.get_json(silent=True) or {}
+    raw_source = (payload.get("source") or "").strip().strip('"')
+    try:
+        source = Path(raw_source).expanduser()
+        allowed = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"}
+        if not source.is_absolute() or not source.is_file() or source.suffix.lower() not in allowed:
+            raise ValueError("Choose an existing video file (MP4, MKV, WebM, MOV, AVI, or M4V).")
+        source = source.resolve()
+        executable = ffmpeg_executable()
+        ffprobe = ffprobe_executable(executable) if executable else shutil.which("ffprobe")
+        if not ffprobe:
+            raise RuntimeError("FFprobe is missing. Restart Cutroom to repair setup, then retry.")
+        probe = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
+             "-of", "json", str(source)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if probe.returncode != 0:
+            raise RuntimeError("Cutroom couldn't read this video's metadata.")
+        metadata = json.loads(probe.stdout or "{}")
+        duration = float((metadata.get("format") or {}).get("duration") or 0)
+        if duration <= 0:
+            raise ValueError("This video has no readable duration.")
+        video_stream = next((stream for stream in metadata.get("streams", []) if stream.get("codec_type") == "video"), {})
+        token = uuid.uuid4().hex
+        with VIDEO_PREVIEWS_LOCK:
+            VIDEO_PREVIEWS[token] = source
+        return jsonify(
+            id=token, name=source.name, duration=duration,
+            width=video_stream.get("width"), height=video_stream.get("height"),
+            preview_url=f"/api/video-preview/{token}",
+        )
+    except (ValueError, OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        return jsonify(error=str(exc)[:400]), 400
+    except Exception as exc:
+        return jsonify(error=str(exc)[:400]), 500
+
+
+@app.get("/api/video-preview/<token>")
+def stream_video_preview(token: str):
+    """Stream a registered local video with HTTP range support for seeking."""
+    with VIDEO_PREVIEWS_LOCK:
+        source = VIDEO_PREVIEWS.get(token)
+    if not source or not source.is_file():
+        return jsonify(error="That preview has expired. Choose the video again."), 404
+    return send_file(source, as_attachment=False, conditional=True, download_name=source.name)
 
 
 @app.post("/api/cut")
