@@ -206,7 +206,7 @@ $("processCutBtn").addEventListener("click",async()=>{
   if(!cutVideoPath||activeJob)return;
   const start=Number(cutStart.value),end=Number(cutEnd.value);
   if(end<=start){setStatus("Move the OUT handle after the IN handle.",0);return}
-  cutVideo.pause();cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";
+  // Keep the source player alive while FFmpeg reads the same file for export.
   $("processCutBtn").disabled=true;$("downloadBtn").disabled=true;$("files").innerHTML="";$("actions").hidden=true;
   setStatus("Starting video cut…",1);
   try{
