@@ -5,6 +5,35 @@
 <title>Cutroom · YouTube Downloader</title>
 <style>
 :root{color-scheme:light;--paper:#f3f1eb;--ink:#22241f;--muted:#6f7169;--line:#d6d5cd;--panel:#fffefa;--accent:#e45b36;--soft:#e9e7df;--green:#e9f0e2}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:930px;margin:auto;padding:25px 24px 50px}.nav{display:flex;justify-content:space-between;align-items:center;padding-bottom:17px;border-bottom:1px solid var(--line);margin-bottom:46px}.brand{font-size:1rem;font-weight:850;letter-spacing:-.045em;display:flex;align-items:center;gap:10px}.logo{display:grid;place-items:center;width:31px;height:31px;border:1.5px solid var(--ink);border-radius:50%;font:11px ui-monospace,monospace}.pill{font:11px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.hero{max-width:720px;margin-bottom:28px}.eyebrow{font:11px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.12em;color:#b83e21;border-left:3px solid var(--accent);padding:3px 0 3px 9px}h1{font-size:clamp(2.6rem,7vw,4.7rem);line-height:.98;letter-spacing:-.075em;margin:18px 0 16px;font-weight:790}.accent{color:var(--accent)}.hero p,.muted{color:var(--muted)}.hero p{max-width:610px;margin:0}.card{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:clamp(18px,4vw,30px);box-shadow:5px 5px 0 #22241f08}label{display:block;font-weight:750;font-size:.9rem;margin-bottom:7px}.urlrow{display:flex;gap:9px}.urlrow input{width:100%;min-width:0;background:#fffefa;border:1px solid #c9c8bf;border-radius:3px;padding:12px;color:var(--ink);font:inherit;outline:none}.urlrow input:focus,select:focus{border-color:var(--accent);outline:2px solid #e45b3625}button,.download{border:1px solid var(--ink);border-radius:3px;padding:10px 15px;background:var(--ink);color:#fffefa;font:inherit;font-size:.9rem;font-weight:750;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}button:hover,.download:hover{background:var(--accent);border-color:var(--accent)}button:disabled{opacity:.45;cursor:wait}.controls{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.field{min-width:0}.field select,.field input[type=text]{width:100%;background:#fffefa;border:1px solid #c9c8bf;border-radius:3px;padding:10px 11px;color:var(--ink);font:inherit}.radio{display:flex;gap:8px;flex-wrap:wrap}.radio label{margin:0;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:#fffefa;cursor:pointer}.radio input{accent-color:var(--accent)}.checkline{display:flex;align-items:center;gap:9px;margin-top:17px;color:var(--muted);font-size:.88rem}.checkline input{accent-color:var(--accent);width:16px;height:16px}.note{margin-top:20px;padding:12px 14px;border-left:3px solid #b8b6aa;background:#f1f0e9;color:#66685f;font-size:.82rem}.statusbox{margin-top:18px;padding:14px;border:1px solid var(--line);background:#f8f7f1}.statushead{display:flex;justify-content:space-between;gap:12px;align-items:center}.status{color:var(--muted);font-size:.88rem;overflow-wrap:anywhere}.percent{font:12px ui-monospace,monospace;color:var(--muted)}.track{height:5px;background:#e4e2da;margin-top:11px}.bar{height:100%;width:0;background:var(--accent);transition:width .25s}.files{display:grid;gap:8px;margin-top:13px}.fileitem{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;background:var(--green);border:1px solid #cbd7bf;min-width:0}.filename{overflow-wrap:anywhere;font-size:.86rem}.filesize{font-size:.75rem;color:var(--muted);white-space:nowrap}.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}.smallbtn{padding:7px 10px;font-size:.8rem}.results-panel{margin-top:22px;border-top:1px solid var(--line);padding-top:18px}.results-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.results-list{display:grid;gap:7px;margin-top:13px;max-height:390px;overflow:auto}.trackrow{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:#fffefa;border:1px solid var(--line)}.trackrow input{width:17px;height:17px;accent-color:var(--accent)}.tracktitle{font-weight:700;overflow-wrap:anywhere}.trackmeta{font-size:.78rem;color:var(--muted)}.selection-actions{display:flex;gap:7px;flex-wrap:wrap}.selection-actions button{padding:6px 9px;font-size:.78rem}.results-summary{font-size:.82rem;color:var(--muted);margin-top:8px}.bottom{display:flex;justify-content:space-between;gap:15px;margin-top:25px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font:11px ui-monospace,monospace}@media(max-width:620px){.wrap{padding:18px 14px 35px}.pill{display:none}.nav{margin-bottom:36px}.urlrow{flex-direction:column}.urlrow button{width:100%}.controls{grid-template-columns:1fr}.bottom{flex-direction:column}.fileitem{align-items:flex-start;flex-direction:column}.trackrow{grid-template-columns:auto 1fr}.trackmeta{grid-column:2}}
+
+/* Built-in visual video cutter */
+.cutter-card{margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:clamp(18px,4vw,30px);box-shadow:5px 5px 0 #22241f08}
+.cutter-heading{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:18px}
+.cutter-heading h2{font-size:1.35rem;letter-spacing:-.04em;margin:0 0 4px}
+.cutter-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(260px,1fr);gap:22px}
+.preview-frame{position:relative;background:#171815;aspect-ratio:16/9;display:grid;place-items:center;overflow:hidden}
+.preview-frame video{width:100%;height:100%;object-fit:contain}
+.preview-empty{position:absolute;color:#d8d6ce;text-align:center;padding:20px;font-size:.86rem;pointer-events:none}
+.cutter-side{min-width:0}
+.cutter-file{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
+.cutter-file-name{font-size:.82rem;color:var(--muted);overflow-wrap:anywhere;min-width:0;flex:1}
+.cutter-times{display:flex;justify-content:space-between;gap:12px;font:12px ui-monospace,monospace;color:var(--muted);margin:16px 0 9px}
+.timeline{height:34px;position:relative;background:#e5e2d9;border:1px solid #cbc8be;border-radius:3px;touch-action:pan-y}
+.timeline-fill{position:absolute;top:0;bottom:0;background:#e45b3633;border-left:2px solid var(--accent);border-right:2px solid var(--accent);pointer-events:none}
+.timeline input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;background:transparent;pointer-events:none;appearance:none;-webkit-appearance:none;outline:none}
+.timeline input[type=range]::-webkit-slider-runnable-track{height:32px;background:transparent}
+.timeline input[type=range]::-moz-range-track{height:32px;background:transparent}
+.timeline input[type=range]::-webkit-slider-thumb{pointer-events:auto;appearance:none;-webkit-appearance:none;width:16px;height:30px;border:2px solid #fff;background:var(--accent);border-radius:3px;box-shadow:0 0 0 1px #a83c22;cursor:ew-resize}
+.timeline input[type=range]::-moz-range-thumb{pointer-events:auto;width:12px;height:26px;border:2px solid #fff;background:var(--accent);border-radius:3px;box-shadow:0 0 0 1px #a83c22;cursor:ew-resize}
+.cutter-meta{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:.78rem;margin-top:9px}
+.cutter-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+.cutter-buttons button{flex:1}
+.cutter-options{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:17px}
+.cutter-options label{font-size:.8rem}
+.cutter-options select{width:100%;padding:9px;border:1px solid #c9c8bf;background:#fffefa;font:inherit}
+.cutter-hint{margin-top:12px;font-size:.78rem;color:var(--muted)}
+@media(max-width:700px){.cutter-layout{grid-template-columns:1fr}.cutter-options{grid-template-columns:1fr}}
+
 </style></head>
 <body><div class="wrap">
 <header class="nav"><div class="brand"><span class="logo">cr</span>cutroom <span style="font:11px ui-monospace,monospace;color:#77786f">/ youtube utility</span></div><span class="pill">Local app · v2.1</span></header>
@@ -15,7 +44,36 @@
 <section id="resultsPanel" class="results-panel" hidden><div class="results-head"><div><strong id="resultsTitle">Videos found</strong><div class="results-summary" id="resultsSummary"></div></div><div class="selection-actions"><button type="button" id="selectAllBtn">Select all</button><button type="button" id="selectNoneBtn">Select none</button></div></div><div id="resultsList" class="results-list"></div><div class="actions"><button type="button" id="downloadBtn">Download selected</button><span class="muted" style="font-size:.82rem">Only checked items will be downloaded.</span></div></section>
 <div class="statusbox"><div class="statushead"><div id="status" class="status" aria-live="polite">Ready when you are. Paste a link to get started.</div><div id="percent" class="percent">0%</div></div><div class="track"><div id="bar" class="bar"></div></div><div id="files" class="files"></div><div class="actions" id="actions" hidden><button class="smallbtn" id="anotherBtn">Start another</button><span id="folderHint" class="muted" style="font-size:.8rem">Files are saved directly in your selected folder.</span></div></div>
 <div class="note">Only save content you own, have permission to download, or are otherwise legally allowed to keep. Cutroom does not bypass DRM, paid access, or private-video restrictions. Conversion requires FFmpeg; setup can install it for you. Large playlists may take a while.</div>
-</main><footer class="bottom"><span>CUTROOM / A small local utility.</span><span>127.0.0.1 · runs on your computer</span></footer></div>
+</main>
+<section class="cutter-card" id="videoCutter">
+  <div class="cutter-heading"><div><span class="eyebrow">LOCAL VIDEO / EDIT & PREVIEW</span><h2>Video cutter</h2><div class="muted" style="font-size:.86rem">Choose a video, drag the handles, then preview the exact selection before exporting.</div></div><span class="pill">Frame selection</span></div>
+  <div class="cutter-layout">
+    <div>
+      <div class="preview-frame">
+        <video id="cutPreview" controls preload="metadata" playsinline></video>
+        <div class="preview-empty" id="previewEmpty">Choose a video to see its preview here.</div>
+      </div>
+      <div class="cutter-hint" id="videoInfo">No video selected.</div>
+    </div>
+    <div class="cutter-side">
+      <div class="cutter-file"><button type="button" class="smallbtn" id="chooseCutVideo">Choose video…</button><span class="cutter-file-name" id="cutFileName">No file selected</span></div>
+      <div class="cutter-times"><span>IN <strong id="cutStartLabel">00:00</strong></span><span>OUT <strong id="cutEndLabel">00:00</strong></span></div>
+      <div class="timeline" id="cutTimeline" aria-label="Video trim range">
+        <div class="timeline-fill" id="cutRangeFill"></div>
+        <input type="range" id="cutStart" min="0" max="1" step="0.01" value="0" aria-label="Cut start">
+        <input type="range" id="cutEnd" min="0" max="1" step="0.01" value="1" aria-label="Cut end">
+      </div>
+      <div class="cutter-meta"><span>Drag either handle to trim</span><span id="cutDuration">0 sec selected</span></div>
+      <div class="cutter-buttons"><button type="button" class="smallbtn" id="previewCutBtn" disabled>Preview selection</button><button type="button" id="processCutBtn" disabled>Export cut</button></div>
+      <div class="cutter-options">
+        <div><label for="cutMode">Cut mode</label><select id="cutMode"><option value="accurate" selected>Accurate · re-encode</option><option value="fast">Fast · stream copy</option></select></div>
+        <div><label for="cutOutput">Output folder</label><input id="cutOutput" type="text" readonly placeholder="Uses the save location above" style="width:100%;padding:9px;border:1px solid #c9c8bf;background:#f4f2eb;font:inherit;font-size:.78rem"></div>
+      </div>
+      <div class="cutter-hint">Preview selection plays from IN to OUT and stops automatically. Accurate mode gives cleaner cut boundaries; Fast mode is quicker but may start near a keyframe.</div>
+    </div>
+  </div>
+</section>
+<footer class="bottom"><span>CUTROOM / A small local utility.</span><span>127.0.0.1 · runs on your computer</span></footer></div>
 <script>
 const $=id=>document.getElementById(id);let activeJob=null,pollTimer=null,foundEntries=[];let downloadFolder="";
 const formats={video:[['mp4','MP4 · widely compatible'],['mkv','MKV · flexible'],['webm','WebM · web format'],['mov','MOV · QuickTime'],['avi','AVI · legacy']],audio:[['mp3','MP3 · widely compatible'],['m4a','M4A · AAC audio'],['wav','WAV · uncompressed'],['flac','FLAC · lossless'],['opus','OPUS · compact']]};
@@ -34,6 +92,72 @@ $('browseBtn').addEventListener('click',async()=>{ $('browseBtn').disabled=true;
 $('saveFolderBtn').addEventListener('click',async()=>{const path=$('destination').value.trim();if(!path){setStatus('Choose a save folder first.',0);return}try{const res=await fetch('/api/settings/download-folder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Could not use that folder.');downloadFolder=data.download_folder;$('destination').value=downloadFolder;setStatus('Save location updated.',0)}catch(e){setStatus(e.message,0)}});
 $('downloadBtn').addEventListener('click',async()=>{const url=$('url').value.trim(),indices=selectedIndices();if(!foundEntries.length){setStatus('Find videos first.',0);return}if(!indices.length){setStatus('Tick at least one item to download.',0);return}if(activeJob)return;$('files').innerHTML='';$('actions').hidden=true;$('downloadBtn').disabled=true;setStatus(`Starting ${indices.length} selected item(s)…`,1);try{const res=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,kind:selectedKind(),format:$('format').value,quality:$('quality').value,playlist:true,selected_indices:indices,destination:$('destination').value.trim()||downloadFolder,conversion_speed:$('conversionSpeed').value})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Could not start download.');activeJob=data.id;poll()}catch(e){setStatus(e.message,0);$('downloadBtn').disabled=false}});
 $('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('inspectBtn').click()});$('anotherBtn').addEventListener('click',()=>{clearTimeout(pollTimer);activeJob=null;foundEntries=[];$('resultsPanel').hidden=true;$('files').innerHTML='';$('actions').hidden=true;setStatus('Ready for another link.',0);$('url').focus()});
+
+// Built-in visual video cutter
+let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
+const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
+function cutTime(value){const n=Math.max(0,Math.floor(Number(value)||0));const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0"):String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");}
+function updateCutTimeline(){
+  const start=Number(cutStart.value),end=Number(cutEnd.value),max=Math.max(cutDurationSeconds,0.01);
+  $("cutStartLabel").textContent=cutTime(start);$("cutEndLabel").textContent=cutTime(end);
+  $("cutDuration").textContent=(Math.max(0,end-start)).toFixed(1)+" sec selected";
+  $("cutRangeFill").style.left=(start/max*100)+"%";$("cutRangeFill").style.width=(Math.max(0,(end-start)/max*100))+"%";
+  $("cutOutput").value=$("destination").value.trim()||downloadFolder||"Uses the save location above";
+}
+function setCutBounds(which,value){
+  if(!cutDurationSeconds)return;
+  const minGap=Math.min(0.05,cutDurationSeconds/1000);
+  if(which==="start")cutStart.value=Math.min(Number(value),Number(cutEnd.value)-minGap);
+  else cutEnd.value=Math.max(Number(value),Number(cutStart.value)+minGap);
+  updateCutTimeline();
+}
+cutStart.addEventListener("input",()=>setCutBounds("start",cutStart.value));
+cutEnd.addEventListener("input",()=>setCutBounds("end",cutEnd.value));
+$("destination").addEventListener("input",updateCutTimeline);
+$("chooseCutVideo").addEventListener("click",async()=>{
+  $("chooseCutVideo").disabled=true;
+  try{
+    const pick=await fetch("/api/choose-video",{method:"POST"}),picked=await pick.json();
+    if(!pick.ok)throw new Error(picked.error||"Could not open the video picker.");
+    if(picked.cancelled||!picked.path)return;
+    const response=await fetch("/api/video-preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:picked.path})});
+    const info=await response.json();if(!response.ok)throw new Error(info.error||"Could not load this video.");
+    cutVideoPath=picked.path;cutDurationSeconds=Number(info.duration)||0;
+    cutVideo.pause();cutVideo.src=info.preview_url;cutVideo.load();
+    $("cutFileName").textContent=info.name;$("previewEmpty").hidden=true;
+    $("videoInfo").textContent=(info.width||"?")+" × "+(info.height||"?")+" · "+cutTime(cutDurationSeconds)+" total";
+    cutStart.min=0;cutStart.max=cutDurationSeconds;cutStart.step=Math.max(cutDurationSeconds/10000,0.01);cutStart.value=0;
+    cutEnd.min=0;cutEnd.max=cutDurationSeconds;cutEnd.step=Math.max(cutDurationSeconds/10000,0.01);cutEnd.value=cutDurationSeconds;
+    $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;updateCutTimeline();
+    setStatus("Video ready. Drag the timeline handles and preview your selection.",0);
+  }catch(e){setStatus(e.message,0)}
+  finally{$("chooseCutVideo").disabled=false}
+});
+$("previewCutBtn").addEventListener("click",async()=>{
+  if(!cutVideoPath||!cutDurationSeconds)return;
+  cutPreviewing=true;cutVideo.currentTime=Number(cutStart.value);$("previewCutBtn").textContent="Playing selection…";
+  try{await cutVideo.play()}catch(e){cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";setStatus("The browser couldn't play this video's format. Try an MP4 or WebM video.",0)}
+});
+cutVideo.addEventListener("timeupdate",()=>{
+  if(cutPreviewing&&cutVideo.currentTime>=Number(cutEnd.value)){
+    cutVideo.pause();cutVideo.currentTime=Number(cutEnd.value);cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";
+  }
+});
+cutVideo.addEventListener("pause",()=>{if(cutPreviewing&&cutVideo.currentTime<Number(cutEnd.value)){cutPreviewing=false;$("previewCutBtn").textContent="Preview selection"}});
+$("processCutBtn").addEventListener("click",async()=>{
+  if(!cutVideoPath||activeJob)return;
+  const start=Number(cutStart.value),end=Number(cutEnd.value);
+  if(end<=start){setStatus("Move the OUT handle after the IN handle.",0);return}
+  cutVideo.pause();cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";
+  $("processCutBtn").disabled=true;$("downloadBtn").disabled=true;$("files").innerHTML="";$("actions").hidden=true;
+  setStatus("Starting video cut…",1);
+  try{
+    const res=await fetch("/api/cut",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:cutVideoPath,start:String(start),end:String(end),destination:$("destination").value.trim()||downloadFolder,mode:$("cutMode").value})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not start the cut.");
+    activeJob=data.id;poll();
+  }catch(e){setStatus(e.message,0);$("processCutBtn").disabled=false;$("downloadBtn").disabled=false}
+});
+
 // Keep the desktop launcher informed while this page is open.
 function sendCutroomHeartbeat(){fetch('/api/heartbeat',{method:'POST',cache:'no-store',keepalive:true}).catch(()=>{});}
 sendCutroomHeartbeat();setInterval(sendCutroomHeartbeat,4000);
