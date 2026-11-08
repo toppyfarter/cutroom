@@ -92,7 +92,7 @@
         <input type="range" id="cutEnd" min="0" max="1" step="0.01" value="1" aria-label="Cut end">
       </div>
       <div class="cutter-meta"><span>Drag either handle to trim</span><span id="cutDuration">0 sec selected</span></div>
-      <div class="cutter-buttons"><button type="button" class="smallbtn" id="previewCutBtn" disabled>Preview selection</button><button type="button" id="processCutBtn" disabled>Export cut</button></div>
+      <div class="cutter-buttons"><button type="button" class="smallbtn" id="skipBackBtn" disabled>−5 sec</button><button type="button" class="smallbtn" id="previewCutBtn" disabled>Preview selection</button><button type="button" class="smallbtn" id="skipForwardBtn" disabled>+5 sec</button><button type="button" id="processCutBtn" disabled>Export cut</button></div>
       <div class="cutter-options">
         <div><label for="cutMode">Cut mode</label><select id="cutMode"><option value="accurate" selected>Accurate · re-encode</option><option value="fast">Fast · stream copy</option></select></div>
         <div><label for="cutOutput">Output folder</label><input id="cutOutput" type="text" readonly placeholder="Uses the save location above" style="width:100%;padding:9px;border:1px solid #c9c8bf;background:#f4f2eb;font:inherit;font-size:.78rem"></div>
@@ -141,6 +141,9 @@ function setCutBounds(which,value){
 }
 cutStart.addEventListener("input",()=>setCutBounds("start",cutStart.value));
 cutEnd.addEventListener("input",()=>setCutBounds("end",cutEnd.value));
+// Once a handle is released, refresh the preview at the new IN point and play the selected range.
+cutStart.addEventListener("change",()=>playCutSelection());
+cutEnd.addEventListener("change",()=>playCutSelection());
 $("destination").addEventListener("input",updateCutTimeline);
 $("chooseCutVideo").addEventListener("click",async()=>{
   $("chooseCutVideo").disabled=true;
@@ -156,7 +159,7 @@ $("chooseCutVideo").addEventListener("click",async()=>{
     $("videoInfo").textContent=(info.width||"?")+" × "+(info.height||"?")+" · "+cutTime(cutDurationSeconds)+" total";
     cutStart.min=0;cutStart.max=cutDurationSeconds;cutStart.step=Math.max(cutDurationSeconds/10000,0.01);cutStart.value=0;
     cutEnd.min=0;cutEnd.max=cutDurationSeconds;cutEnd.step=Math.max(cutDurationSeconds/10000,0.01);cutEnd.value=cutDurationSeconds;
-    $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;updateCutTimeline();
+    $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;$("skipBackBtn").disabled=false;$("skipForwardBtn").disabled=false;updateCutTimeline();
     setStatus("Video ready. Drag the timeline handles and preview your selection.",0);
   }catch(e){setStatus(e.message,0)}
   finally{$("chooseCutVideo").disabled=false}
@@ -177,25 +180,38 @@ async function seekCutPreview(time){
   cutVideo.currentTime=time;
   await seeked;
 }
-$("previewCutBtn").addEventListener("click",async()=>{
-  if(!cutVideoPath||!cutDurationSeconds)return;
+async function playCutSelection(){
+  if(!cutVideoPath||!cutDurationSeconds||activeJob)return;
   const start=Number(cutStart.value),end=Number(cutEnd.value);
-  cutPreviewing=true;$("previewCutBtn").disabled=true;$("previewCutBtn").textContent="Preparing preview…";
+  cutPreviewing=false;cutVideo.pause();
+  $("previewCutBtn").disabled=true;$("previewCutBtn").textContent="Refreshing preview…";
   try{
     await seekCutPreview(start);
-    if(!cutPreviewing)return;
+    cutPreviewing=true;
     $("previewCutBtn").textContent="Playing selection…";
     await cutVideo.play();
     if(cutVideo.currentTime>=end){cutVideo.pause();cutPreviewing=false}
   }catch(e){
     cutPreviewing=false;
-    $("previewCutBtn").textContent="Preview selection";
-    setStatus("Preview couldn't start. Try an MP4 or WebM file, then try again.",0);
+    setStatus("Couldn't refresh the preview. Try an MP4 or WebM video.",0);
   }finally{
     $("previewCutBtn").disabled=false;
     if(!cutPreviewing)$("previewCutBtn").textContent="Preview selection";
   }
-});
+}
+$("previewCutBtn").addEventListener("click",playCutSelection);
+async function skipPreview(seconds){
+  if(!cutVideoPath||!cutDurationSeconds)return;
+  const start=Number(cutStart.value),end=Number(cutEnd.value);
+  const base=cutVideo.currentTime>=start&&cutVideo.currentTime<=end?cutVideo.currentTime:start;
+  const target=Math.max(start,Math.min(end,base+seconds));
+  try{
+    await seekCutPreview(target);
+    if(cutVideo.paused&&target<end){cutPreviewing=true;await cutVideo.play()}
+  }catch(e){setStatus("Couldn't seek the preview video.",0)}
+}
+$("skipBackBtn").addEventListener("click",()=>skipPreview(-5));
+$("skipForwardBtn").addEventListener("click",()=>skipPreview(5));
 cutVideo.addEventListener("timeupdate",()=>{
   if(cutPreviewing&&cutVideo.currentTime>=Number(cutEnd.value)){
     cutVideo.pause();cutVideo.currentTime=Number(cutEnd.value);cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";
