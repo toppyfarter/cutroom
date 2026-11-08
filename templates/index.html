@@ -105,6 +105,33 @@
   .preview-frame video{max-height:58vh}
 }
 
+
+/* Main preview viewport: large, stable and independent of source aspect ratio */
+.preview-frame{
+  width:100%;
+  height:clamp(360px,64vh,760px);
+  max-height:76vh;
+  aspect-ratio:auto !important;
+  margin:0 auto;
+  background:#101010;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.preview-frame video{
+  display:block;
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  object-position:center center;
+}
+@media(max-width:700px){
+  .preview-frame{height:clamp(260px,54vh,520px);max-height:64vh}
+}
+
 </style></head>
 <body><div class="wrap">
 <header class="nav"><div class="brand"><span class="logo">cr</span>cutroom <span style="font:11px ui-monospace,monospace;color:#77786f">/ youtube utility</span></div><span class="pill">Local app · v2.1</span></header>
@@ -121,7 +148,7 @@
   <div class="cutter-layout">
     <div>
       <div class="preview-frame">
-        <video id="cutPreview" controls preload="metadata" playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate noremoteplayback"></video>
+        <video id="cutPreview" controls preload="metadata" playsinline controlslist="nodownload noplaybackrate noremoteplayback"></video>
         <div class="preview-empty" id="previewEmpty">Choose a video to see its preview here.</div>
       </div>
       <div class="cutter-hint" id="videoInfo">No video selected.</div>
@@ -178,22 +205,7 @@ $('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('inspectBtn').click
 let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
 const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
 
-// Keep the preview canvas matched to the video's real aspect ratio.
-// object-fit:contain preserves the whole frame and avoids manual resizing.
-function fitPreviewToVideo(){
-  const width=cutVideo.videoWidth,height=cutVideo.videoHeight;
-  if(!width||!height)return;
-  const frame=document.querySelector(".preview-frame");
-  frame.style.aspectRatio=width+" / "+height;
-}
-cutVideo.addEventListener("loadedmetadata",fitPreviewToVideo);
-cutVideo.addEventListener("resize",fitPreviewToVideo);
-cutVideo.addEventListener("enterpictureinpicture",()=>{
-  // PiP is disabled on the element; if the browser still enters it, return to the embedded player.
-  if(document.pictureInPictureElement===cutVideo){
-    document.exitPictureInPicture().catch(()=>{});
-  }
-});
+// Keep Picture-in-Picture available; it is useful for checking playback duration.
 
 // Built-in visual video cutter
 
