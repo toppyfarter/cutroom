@@ -34,6 +34,34 @@
 .cutter-hint{margin-top:12px;font-size:.78rem;color:var(--muted)}
 @media(max-width:700px){.cutter-layout{grid-template-columns:1fr}.cutter-options{grid-template-columns:1fr}}
 
+
+/* Larger, editor-style cutter layout */
+.wrap{max-width:1240px}
+.cutter-card{padding:clamp(22px,3vw,38px)}
+.cutter-layout{grid-template-columns:minmax(0,1fr);gap:20px}
+.preview-frame{width:100%;height:clamp(320px,56vw,690px);max-height:70vh;aspect-ratio:auto}
+.preview-frame video{width:100%;height:100%;object-fit:contain}
+.cutter-side{width:100%}
+.cutter-file{margin-bottom:12px}
+.cutter-times{font-size:14px;margin-top:20px}
+.timeline{height:54px;border-radius:5px}
+.timeline input[type=range]::-webkit-slider-runnable-track{height:52px}
+.timeline input[type=range]::-moz-range-track{height:52px}
+.timeline input[type=range]::-webkit-slider-thumb{width:22px;height:48px;border-radius:4px}
+.timeline input[type=range]::-moz-range-thumb{width:18px;height:44px;border-radius:4px}
+.cutter-meta{font-size:.85rem}
+.cutter-buttons{max-width:520px}
+.cutter-options{max-width:760px}
+@media(max-width:700px){
+  .wrap{padding-left:14px;padding-right:14px}
+  .preview-frame{height:clamp(240px,58vw,420px);max-height:62vh}
+  .timeline{height:46px}
+  .timeline input[type=range]::-webkit-slider-runnable-track{height:44px}
+  .timeline input[type=range]::-moz-range-track{height:44px}
+  .timeline input[type=range]::-webkit-slider-thumb{height:40px}
+  .timeline input[type=range]::-moz-range-thumb{height:36px}
+}
+
 </style></head>
 <body><div class="wrap">
 <header class="nav"><div class="brand"><span class="logo">cr</span>cutroom <span style="font:11px ui-monospace,monospace;color:#77786f">/ youtube utility</span></div><span class="pill">Local app · v2.1</span></header>
@@ -133,10 +161,40 @@ $("chooseCutVideo").addEventListener("click",async()=>{
   }catch(e){setStatus(e.message,0)}
   finally{$("chooseCutVideo").disabled=false}
 });
+function waitForVideoEvent(eventName){
+  return new Promise((resolve,reject)=>{
+    const onEvent=()=>{cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error("The video preview could not be loaded."))};
+    const cleanup=()=>{cutVideo.removeEventListener(eventName,onEvent);cutVideo.removeEventListener("error",onError)};
+    cutVideo.addEventListener(eventName,onEvent,{once:true});
+    cutVideo.addEventListener("error",onError,{once:true});
+  });
+}
+async function seekCutPreview(time){
+  if(cutVideo.readyState<1)await waitForVideoEvent("loadedmetadata");
+  if(Math.abs(cutVideo.currentTime-time)<0.04)return;
+  const seeked=waitForVideoEvent("seeked");
+  cutVideo.currentTime=time;
+  await seeked;
+}
 $("previewCutBtn").addEventListener("click",async()=>{
   if(!cutVideoPath||!cutDurationSeconds)return;
-  cutPreviewing=true;cutVideo.currentTime=Number(cutStart.value);$("previewCutBtn").textContent="Playing selection…";
-  try{await cutVideo.play()}catch(e){cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";setStatus("The browser couldn't play this video's format. Try an MP4 or WebM video.",0)}
+  const start=Number(cutStart.value),end=Number(cutEnd.value);
+  cutPreviewing=true;$("previewCutBtn").disabled=true;$("previewCutBtn").textContent="Preparing preview…";
+  try{
+    await seekCutPreview(start);
+    if(!cutPreviewing)return;
+    $("previewCutBtn").textContent="Playing selection…";
+    await cutVideo.play();
+    if(cutVideo.currentTime>=end){cutVideo.pause();cutPreviewing=false}
+  }catch(e){
+    cutPreviewing=false;
+    $("previewCutBtn").textContent="Preview selection";
+    setStatus("Preview couldn't start. Try an MP4 or WebM file, then try again.",0);
+  }finally{
+    $("previewCutBtn").disabled=false;
+    if(!cutPreviewing)$("previewCutBtn").textContent="Preview selection";
+  }
 });
 cutVideo.addEventListener("timeupdate",()=>{
   if(cutPreviewing&&cutVideo.currentTime>=Number(cutEnd.value)){
