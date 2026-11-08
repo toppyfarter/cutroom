@@ -141,6 +141,8 @@ $('saveFolderBtn').addEventListener('click',async()=>{const path=$('destination'
 $('downloadBtn').addEventListener('click',async()=>{const url=$('url').value.trim(),indices=selectedIndices();if(!foundEntries.length){setStatus('Find videos first.',0);return}if(!indices.length){setStatus('Tick at least one item to download.',0);return}if(activeJob)return;$('files').innerHTML='';$('actions').hidden=true;$('downloadBtn').disabled=true;setStatus(`Starting ${indices.length} selected item(s)…`,1);try{const res=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,kind:selectedKind(),format:$('format').value,quality:$('quality').value,playlist:true,selected_indices:indices,destination:$('destination').value.trim()||downloadFolder,conversion_speed:$('conversionSpeed').value})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Could not start download.');activeJob=data.id;poll()}catch(e){setStatus(e.message,0);$('downloadBtn').disabled=false}});
 $('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('inspectBtn').click()});$('anotherBtn').addEventListener('click',()=>{clearTimeout(pollTimer);activeJob=null;foundEntries=[];$('resultsPanel').hidden=true;$('files').innerHTML='';$('actions').hidden=true;setStatus('Ready for another link.',0);$('url').focus()});
 
+let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
+const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
 // Built-in visual video cutter
 
 const cutPlayhead=$("cutPlayhead");
@@ -150,30 +152,35 @@ function updatePlayhead(){
   cutPlayhead.value=time;
   $("cutPlayheadLabel").textContent=cutTime(time);
 }
-function seekToPreviewTime(value){
+async function seekToPreviewTime(value,keepPlaying=false){
   if(!cutDurationSeconds||!Number.isFinite(Number(value)))return;
-  const time=Math.max(0,Math.min(cutDurationSeconds,Number(value)));
-  cutVideo.currentTime=time;
+  const start=Number(cutStart.value),end=Number(cutEnd.value);
+  const time=Math.max(start,Math.min(end,Number(value)));
+  const wasPlaying=!cutVideo.paused;
   cutPreviewing=false;
-  $("previewCutBtn").textContent="Preview selection";
-  updatePlayhead();
+  try{
+    await seekCutPreview(time);
+    updatePlayhead();
+    if(keepPlaying||wasPlaying){
+      if(time<end){cutPreviewing=true;await cutVideo.play();}
+    }
+  }catch(e){setStatus("Couldn't seek the preview video.",0)}
 }
 cutPlayhead.addEventListener("input",()=>seekToPreviewTime(cutPlayhead.value));
-$("skipBackBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)-5));
-$("skipForwardBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)+5));
+$("skipBackBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)-5,true));
+$("skipForwardBtn").addEventListener("click",()=>seekToPreviewTime((Number(cutVideo.currentTime)||0)+5,true));
 cutVideo.addEventListener("timeupdate",updatePlayhead);
 cutVideo.addEventListener("loadedmetadata",updatePlayhead);
-cutStart.addEventListener("change",()=>seekToPreviewTime(cutStart.value));
-cutEnd.addEventListener("change",()=>seekToPreviewTime(cutEnd.value));
+cutStart.addEventListener("change",()=>playCutSelection());
+cutEnd.addEventListener("change",()=>playCutSelection());
 cutVideo.addEventListener("keydown",event=>{
   if(event.key==="ArrowLeft"||event.key==="ArrowRight"){
     event.preventDefault();
-    seekToPreviewTime((Number(cutVideo.currentTime)||0)+(event.key==="ArrowRight"?5:-5));
+    seekToPreviewTime((Number(cutVideo.currentTime)||0)+(event.key==="ArrowRight"?5:-5),true);
   }
 });
 
-let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
-const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
+
 function cutTime(value){const n=Math.max(0,Math.floor(Number(value)||0));const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0"):String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");}
 function updateCutTimeline(){
   const start=Number(cutStart.value),end=Number(cutEnd.value),max=Math.max(cutDurationSeconds,0.01);
@@ -208,7 +215,7 @@ $("chooseCutVideo").addEventListener("click",async()=>{
     cutEnd.min=0;cutEnd.max=cutDurationSeconds;cutEnd.step=Math.max(cutDurationSeconds/10000,0.01);cutEnd.value=cutDurationSeconds;
     cutPlayhead.min=0;cutPlayhead.max=cutDurationSeconds;cutPlayhead.step=Math.max(cutDurationSeconds/1000,0.1);cutPlayhead.value=0;
     $("skipBackBtn").disabled=false;$("skipForwardBtn").disabled=false;
-    $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;updateCutTimeline();
+    $("previewCutBtn").disabled=false;$("processCutBtn").disabled=false;$("skipBackBtn").disabled=false;$("skipForwardBtn").disabled=false;updateCutTimeline();
     setStatus("Video ready. Drag the timeline handles and preview your selection.",0);
   }catch(e){setStatus(e.message,0)}
   finally{$("chooseCutVideo").disabled=false}
@@ -229,25 +236,26 @@ async function seekCutPreview(time){
   cutVideo.currentTime=time;
   await seeked;
 }
-$("previewCutBtn").addEventListener("click",async()=>{
-  if(!cutVideoPath||!cutDurationSeconds)return;
+async function playCutSelection(){
+  if(!cutVideoPath||!cutDurationSeconds||activeJob)return;
   const start=Number(cutStart.value),end=Number(cutEnd.value);
-  cutPreviewing=true;$("previewCutBtn").disabled=true;$("previewCutBtn").textContent="Preparing preview…";
+  cutPreviewing=false;cutVideo.pause();
+  $("previewCutBtn").disabled=true;$("previewCutBtn").textContent="Refreshing preview…";
   try{
     await seekCutPreview(start);
-    if(!cutPreviewing)return;
+    cutPreviewing=true;
     $("previewCutBtn").textContent="Playing selection…";
     await cutVideo.play();
     if(cutVideo.currentTime>=end){cutVideo.pause();cutPreviewing=false}
   }catch(e){
     cutPreviewing=false;
-    $("previewCutBtn").textContent="Preview selection";
-    setStatus("Preview couldn't start. Try an MP4 or WebM file, then try again.",0);
+    setStatus("Couldn't refresh the preview. Try an MP4 or WebM video.",0);
   }finally{
     $("previewCutBtn").disabled=false;
     if(!cutPreviewing)$("previewCutBtn").textContent="Preview selection";
   }
-});
+}
+$("previewCutBtn").addEventListener("click",playCutSelection);
 cutVideo.addEventListener("timeupdate",()=>{
   if(cutPreviewing&&cutVideo.currentTime>=Number(cutEnd.value)){
     cutVideo.pause();cutVideo.currentTime=Number(cutEnd.value);cutPreviewing=false;$("previewCutBtn").textContent="Preview selection";
