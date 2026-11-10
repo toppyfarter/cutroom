@@ -25,7 +25,6 @@ def load_settings() -> dict:
     except (OSError, ValueError, TypeError):
         return {}
 
-
 def current_download_root() -> Path:
     raw = load_settings().get("download_dir")
     try:
@@ -70,11 +69,9 @@ def validate_url(value: str) -> str:
         raise ValueError("Paste a link to a video or playlist, not the YouTube homepage.")
     return value
 
-
 def safe_name(value: str) -> str:
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", value or "")
     return value.strip(" .")[:100] or "youtube-download"
-
 
 def ffmpeg_location() -> str | None:
     local_bin = APP_DIR / "tools" / "ffmpeg" / "bin"
@@ -84,13 +81,11 @@ def ffmpeg_location() -> str | None:
         return None
     return None
 
-
 def ffmpeg_executable() -> str | None:
     local_bin = APP_DIR / "tools" / "ffmpeg" / "bin" / "ffmpeg.exe"
     if local_bin.exists():
         return str(local_bin)
     return shutil.which("ffmpeg")
-
 
 def ffprobe_executable(ffmpeg: str) -> str | None:
     """Find ffprobe beside bundled FFmpeg or on PATH for normal installs."""
@@ -99,7 +94,6 @@ def ffprobe_executable(ffmpeg: str) -> str | None:
         if candidate.exists():
             return str(candidate)
     return shutil.which("ffprobe")
-
 
 def probe_codecs(source: Path, ffmpeg: str) -> tuple[str, str]:
     """Return video/audio codec names when ffprobe is available."""
@@ -349,7 +343,6 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
     }
 
     if selected_indices:
-        # yt-dlp uses one-based playlist positions. Restrict the job to checked entries.
         opts["playlist_items"] = ",".join(str(i) for i in selected_indices)
 
     if kind == "audio":
@@ -359,7 +352,6 @@ def run_download(job_id: str, url: str, kind: str, fmt: str, quality: str, playl
     else:
         if fmt == "mp4":
             height_filter = "" if resolution == "best" else f"[height<={int(resolution)}]"
-            # Prefer AVC/H.264 + AAC so the MP4 can be stream-copied instead of re-encoded.
             opts["format"] = (
                 f"bestvideo{height_filter}[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
                 f"bestvideo{height_filter}[ext=mp4]+bestaudio[ext=m4a]/"
@@ -696,7 +688,6 @@ def get_job(job_id: str):
             return jsonify(error="That job was not found. Restart a download."), 404
         return jsonify(job)
 
-
 @app.get("/api/jobs/<job_id>/file")
 def get_file(job_id: str):
     rel = request.args.get("path", "")
@@ -709,7 +700,6 @@ def get_file(job_id: str):
     if not candidate.is_relative_to(root) or not candidate.is_file():
         return jsonify(error="File not found."), 404
     return send_from_directory(candidate.parent, candidate.name, as_attachment=True)
-
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8765, debug=False, threaded=True)
