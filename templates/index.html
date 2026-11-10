@@ -71,6 +71,67 @@
 .scrub-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
 .scrub-actions .cutter-hint{margin:0}
 
+
+/* Adaptive, full-width preview canvas */
+.wrap{max-width:1320px}
+.cutter-card{padding:clamp(22px,3vw,40px)}
+.cutter-layout{grid-template-columns:minmax(0,1fr);gap:24px}
+.preview-frame{
+  width:100%;
+  max-height:72vh;
+  aspect-ratio:16/9;
+  height:auto;
+  margin:0 auto;
+  background:#111;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.preview-frame video{
+  display:block;
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:72vh;
+  object-fit:contain;
+  object-position:center;
+}
+.cutter-side{width:100%;min-width:0}
+.cutter-options{max-width:900px}
+@media(max-width:700px){
+  .wrap{padding-left:14px;padding-right:14px}
+  .preview-frame{max-height:58vh}
+  .preview-frame video{max-height:58vh}
+}
+
+
+/* Main preview viewport: large, stable and independent of source aspect ratio */
+.preview-frame{
+  width:100%;
+  height:clamp(360px,64vh,760px);
+  max-height:76vh;
+  aspect-ratio:auto !important;
+  margin:0 auto;
+  background:#101010;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.preview-frame video{
+  display:block;
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
+  object-position:center center;
+}
+@media(max-width:700px){
+  .preview-frame{height:clamp(260px,54vh,520px);max-height:64vh}
+}
+
 </style></head>
 <body><div class="wrap">
 <header class="nav"><div class="brand"><span class="logo">cr</span>cutroom <span style="font:11px ui-monospace,monospace;color:#77786f">/ youtube utility</span></div><span class="pill">Local app · v2.1</span></header>
@@ -87,7 +148,7 @@
   <div class="cutter-layout">
     <div>
       <div class="preview-frame">
-        <video id="cutPreview" controls preload="metadata" playsinline></video>
+        <video id="cutPreview" controls preload="metadata" playsinline controlslist="nodownload noplaybackrate noremoteplayback"></video>
         <div class="preview-empty" id="previewEmpty">Choose a video to see its preview here.</div>
       </div>
       <div class="cutter-hint" id="videoInfo">No video selected.</div>
@@ -143,6 +204,9 @@ $('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('inspectBtn').click
 
 let cutVideoPath="",cutDurationSeconds=0,cutPreviewing=false;
 const cutVideo=$("cutPreview"),cutStart=$("cutStart"),cutEnd=$("cutEnd");
+
+// Keep Picture-in-Picture available; it is useful for checking playback duration.
+
 // Built-in visual video cutter
 
 const cutPlayhead=$("cutPlayhead");
