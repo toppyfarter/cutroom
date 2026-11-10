@@ -255,11 +255,9 @@ def main():
             if last > 0:
                 seen_heartbeat = True
                 if now - last > HEARTBEAT_TIMEOUT:
-                    # The browser page has stopped responding. Stop the server and remove the tray icon.
                     stop_event.set()
                     break
             elif not seen_heartbeat and now - started > STARTUP_GRACE:
-                # Browser never connected (for example, browser launch failed).
                 stop_event.set()
                 break
     finally:
